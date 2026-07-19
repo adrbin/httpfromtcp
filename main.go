@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 const (
@@ -16,6 +17,7 @@ func main() {
 		return
 	}
 	defer f.Close()
+	currentLine := ""
 	bytes := make([]byte, BufferSize)
 
 	for {
@@ -27,6 +29,16 @@ func main() {
 			fmt.Println("Error reading file:", err)
 			return
 		}
-		fmt.Printf("read: %s\n", string(bytes[:n]))
+		chunk := string(bytes[:n])
+		parts := strings.Split(chunk, "\n")
+		lastPartIndex := len(parts) - 1
+		for _, part := range parts[:lastPartIndex] {
+			currentLine += part
+			fmt.Printf("read: %s\n", string(currentLine))
+			currentLine = ""
+		}
+		currentLine += parts[lastPartIndex]
 	}
+
+	fmt.Printf("read: %s\n", currentLine)
 }
