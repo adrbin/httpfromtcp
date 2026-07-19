@@ -3,12 +3,13 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
+	"net"
 	"strings"
 )
 
 const (
 	BufferSize = 8
+	Address    = ":42069"
 )
 
 func getLinesChannel(f io.ReadCloser) <-chan string {
@@ -36,20 +37,32 @@ func getLinesChannel(f io.ReadCloser) <-chan string {
 			}
 			currentLine += parts[lastPartIndex]
 		}
-
-		c <- string(currentLine)
+		if currentLine != "" {
+			c <- string(currentLine)
+		}
 	}()
 	return c
 }
 
 func main() {
-	f, err := os.Open("messages.txt")
+	f, err := net.Listen("tcp", Address)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
 		return
 	}
-	c := getLinesChannel(f)
-	for line := range c {
-		fmt.Printf("read: %s\n", line)
+	defer f.Close()
+	for {
+		conn, err := f.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection:", err)
+			continue
+		}
+		fmt.Printf("Connection accepted from %s\n", conn.RemoteAddr())
+		c := getLinesChannel(conn)
+		for line := range c {
+			fmt.Printf("%s\n", line)
+		}
+		fmt.Printf("Connection closed from %s\n", conn.RemoteAddr())
 	}
+
 }
