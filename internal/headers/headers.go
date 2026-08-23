@@ -37,6 +37,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 	name := string(bytes.ToLower(trimmedName))
 	value := string(bytes.TrimSpace(valueBytes))
+	if existingValue, exists := h[name]; exists {
+		value = existingValue + ", " + value
+	}
 	h[name] = value
 	return lineLength + 2, false, nil
 }

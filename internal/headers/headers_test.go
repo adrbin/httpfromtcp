@@ -100,3 +100,18 @@ func TestHeadersParseEmptyHeaderName(t *testing.T) {
 	assert.Equal(t, 0, n)
 	assert.False(t, done)
 }
+
+// Test: Multiple header values with same name
+func TestHeadersParseMultipleHeaderValues(t *testing.T) {
+	headers := NewHeaders()
+	headers["accept"] = "text/html"
+	data := []byte("Accept: application/json\r\n\r\n")
+
+	n, done, err := headers.Parse(data)
+
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "text/html, application/json", headers["accept"])
+	assert.Equal(t, 26, n)
+	assert.False(t, done)
+}
