@@ -2,6 +2,7 @@ package request
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -52,9 +53,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	readToIndex := 0
 	buffer := make([]byte, BufferSize)
 
-	for {
+	for r.parseState != Done {
 		n, err := reader.Read(buffer[readToIndex:])
-		if n == 0 && err == io.EOF {
+		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
