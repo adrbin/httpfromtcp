@@ -43,7 +43,7 @@ func TestHeadersParseInvalidSpacing(t *testing.T) {
 	n, done, err := headers.Parse(data)
 
 	require.Error(t, err)
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 30, n)
 	assert.False(t, done)
 }
 
@@ -85,7 +85,7 @@ func TestHeadersParseInvalidHeaderName(t *testing.T) {
 	n, done, err := headers.Parse(data)
 
 	require.Error(t, err)
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 24, n)
 	assert.False(t, done)
 }
 
@@ -97,7 +97,7 @@ func TestHeadersParseEmptyHeaderName(t *testing.T) {
 	n, done, err := headers.Parse(data)
 
 	require.Error(t, err)
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 19, n)
 	assert.False(t, done)
 }
 

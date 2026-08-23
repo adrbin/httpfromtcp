@@ -17,23 +17,24 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	if lineLength == -1 {
 		return 0, false, nil
 	}
+	bytesRead := lineLength + 2
 	if lineLength == 0 {
-		return 2, true, nil
+		return bytesRead, true, nil
 	}
 	line := data[:lineLength]
 	nameBytes, valueBytes, found := bytes.Cut(line, []byte(":"))
 	if !found {
-		return 0, false, fmt.Errorf("invalid header format: %s", string(line))
+		return bytesRead, false, fmt.Errorf("invalid header format: %s", string(line))
 	}
 	trimmedName := bytes.TrimSpace(nameBytes)
 	if len(trimmedName) == 0 {
-		return 0, false, fmt.Errorf("empty header name")
+		return bytesRead, false, fmt.Errorf("empty header name")
 	}
 	if len(trimmedName) != len(nameBytes) {
-		return 0, false, fmt.Errorf("invalid whitespace in header name: %s", string(nameBytes))
+		return bytesRead, false, fmt.Errorf("invalid whitespace in header name: %s", string(nameBytes))
 	}
 	if !regexp.MustCompile("^[A-Za-z0-9!#$%&'*+-.^_`|~]+$").Match(trimmedName) {
-		return 0, false, fmt.Errorf("invalid characters in header name: %s", string(trimmedName))
+		return bytesRead, false, fmt.Errorf("invalid characters in header name: %s", string(trimmedName))
 	}
 	name := string(bytes.ToLower(trimmedName))
 	value := string(bytes.TrimSpace(valueBytes))
@@ -41,5 +42,5 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		value = existingValue + ", " + value
 	}
 	h[name] = value
-	return lineLength + 2, false, nil
+	return bytesRead, false, nil
 }

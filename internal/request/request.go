@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"httpfromtcp/internal/headers"
 	"io"
 	"regexp"
 	"strings"
@@ -15,11 +16,13 @@ type ParseState int
 
 const (
 	Initialized ParseState = iota
+	ParsingHeaders
 	Done
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	parseState  ParseState
 }
 
@@ -29,26 +32,59 @@ type RequestLine struct {
 	Method        string
 }
 
+func NewRequest() *Request {
+	return &Request{
+		parseState: Initialized,
+		Headers:    headers.NewHeaders(),
+	}
+}
+
 func (r *Request) parse(data []byte) (int, error) {
-	if r.parseState == Done {
+	totalBytesParsed := 0
+	for r.parseState != Done {
+		bytesParsed, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return totalBytesParsed + bytesParsed, err
+		}
+		if bytesParsed == 0 {
+			break
+		}
+		totalBytesParsed += bytesParsed
+	}
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
+	switch r.parseState {
+	case Initialized:
+		bytesRead, requestLine, err := parseRequestLine(data)
+		if err != nil {
+			return bytesRead, err
+		}
+		if bytesRead == 0 {
+			return 0, nil
+		}
+		r.RequestLine = *requestLine
+		r.parseState = ParsingHeaders
+		return bytesRead, nil
+	case ParsingHeaders:
+		bytesRead, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, err
+		}
+		if done {
+			r.parseState = Done
+		}
+		return bytesRead, nil
+	case Done:
 		return 0, nil
+	default:
+		return 0, fmt.Errorf("unknown parse state: %v", r.parseState)
 	}
-	bytesRead, requestLine, err := parseRequestLine(data)
-	if err != nil {
-		return bytesRead, err
-	}
-	if bytesRead == 0 {
-		return 0, nil
-	}
-	r.RequestLine = *requestLine
-	r.parseState = Done
-	return bytesRead, nil
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	r := &Request{
-		parseState: Initialized,
-	}
+	r := NewRequest()
 
 	readToIndex := 0
 	buffer := make([]byte, BufferSize)
@@ -56,7 +92,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	for r.parseState != Done {
 		n, err := reader.Read(buffer[readToIndex:])
 		if n == 0 && errors.Is(err, io.EOF) {
-			break
+			return nil, fmt.Errorf("unexpected EOF while parsing request")
 		}
 		if err != nil {
 			return nil, err
@@ -73,7 +109,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			return nil, err
 		}
 		if readBytes > 0 {
-			readToIndex = copy(buffer, buffer[readBytes:])
+			readToIndex = copy(buffer, buffer[readBytes:readToIndex])
 		}
 	}
 
@@ -85,24 +121,25 @@ func parseRequestLine(requestBytes []byte) (int, *RequestLine, error) {
 	if lineLength == -1 {
 		return 0, nil, nil
 	}
+	bytesRead := lineLength + 2
 	requestLine := requestBytes[:lineLength]
 	parts := bytes.Split(requestLine, []byte(" "))
 	if len(parts) != 3 {
-		return lineLength, nil, fmt.Errorf("invalid request line format: %s", string(requestLine))
+		return bytesRead, nil, fmt.Errorf("invalid request line format: %s", string(requestLine))
 	}
 
 	method := string(parts[0])
 
 	if !regexp.MustCompile(`^[A-Z]+$`).MatchString(method) {
-		return lineLength, nil, fmt.Errorf("invalid request method")
+		return bytesRead, nil, fmt.Errorf("invalid request method")
 	}
 
 	httpVersion := strings.TrimPrefix(string(parts[2]), "HTTP/")
 	if httpVersion != "1.1" {
-		return lineLength, nil, fmt.Errorf("unsupported HTTP version: %s", httpVersion)
+		return bytesRead, nil, fmt.Errorf("unsupported HTTP version: %s", httpVersion)
 	}
 
-	return lineLength, &RequestLine{
+	return bytesRead, &RequestLine{
 		Method:        method,
 		RequestTarget: string(parts[1]),
 		HttpVersion:   httpVersion,
