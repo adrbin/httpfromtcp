@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"httpfromtcp/internal/request"
 	"io"
 	"net"
 	"strings"
@@ -58,10 +59,16 @@ func main() {
 			continue
 		}
 		fmt.Printf("Connection accepted from %s\n", conn.RemoteAddr())
-		c := getLinesChannel(conn)
-		for line := range c {
-			fmt.Printf("%s\n", line)
+		r, err := request.RequestFromReader(conn)
+		conn.Close()
+		if err != nil {
+			fmt.Printf("Error reading request from %s: %v\n", conn.RemoteAddr(), err)
+			continue
 		}
+		fmt.Println("Request line:")
+		fmt.Printf("- Method: %s\n", r.RequestLine.Method)
+		fmt.Printf("- Target: %s\n", r.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %s\n", r.RequestLine.HttpVersion)
 		fmt.Printf("Connection closed from %s\n", conn.RemoteAddr())
 	}
 
