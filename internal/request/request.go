@@ -7,6 +7,8 @@ import (
 	"httpfromtcp/internal/headers"
 	"io"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -17,12 +19,14 @@ type ParseState int
 const (
 	Initialized ParseState = iota
 	ParsingHeaders
+	ParsingBody
 	Done
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	parseState  ParseState
 }
 
@@ -37,6 +41,39 @@ func NewRequest() *Request {
 		parseState: Initialized,
 		Headers:    headers.NewHeaders(),
 	}
+}
+
+func RequestFromReader(reader io.Reader) (*Request, error) {
+	r := NewRequest()
+
+	readToIndex := 0
+	buffer := make([]byte, BufferSize)
+
+	for r.parseState != Done {
+		n, err := reader.Read(buffer[readToIndex:])
+		if n == 0 && errors.Is(err, io.EOF) {
+			return nil, fmt.Errorf("unexpected EOF while parsing request")
+		}
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			newBuffer := make([]byte, len(buffer)*2)
+			copy(newBuffer, buffer)
+			buffer = newBuffer
+			continue
+		}
+		readToIndex += n
+		readBytes, err := r.parse(buffer[:readToIndex])
+		if err != nil {
+			return nil, err
+		}
+		if readBytes > 0 {
+			readToIndex = copy(buffer, buffer[readBytes:readToIndex])
+		}
+	}
+
+	return r, nil
 }
 
 func (r *Request) parse(data []byte) (int, error) {
@@ -73,47 +110,33 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 			return 0, err
 		}
 		if done {
-			r.parseState = Done
+			r.parseState = ParsingBody
 		}
 		return bytesRead, nil
+	case ParsingBody:
+		contentLengthStr := r.Headers.Get("content-length")
+		if contentLengthStr == "" {
+			r.parseState = Done
+			return 0, nil
+		}
+		bytesLength := len(data)
+		contentLength, err := strconv.Atoi(contentLengthStr)
+		if err != nil {
+			return bytesLength, fmt.Errorf("invalid content-length header value: %s", contentLengthStr)
+		}
+		r.Body = slices.Concat(r.Body, data)
+		if len(r.Body) > contentLength {
+			return bytesLength, fmt.Errorf("body exceeds content-length")
+		}
+		if len(r.Body) == contentLength {
+			r.parseState = Done
+		}
+		return bytesLength, nil
 	case Done:
 		return 0, nil
 	default:
 		return 0, fmt.Errorf("unknown parse state: %v", r.parseState)
 	}
-}
-
-func RequestFromReader(reader io.Reader) (*Request, error) {
-	r := NewRequest()
-
-	readToIndex := 0
-	buffer := make([]byte, BufferSize)
-
-	for r.parseState != Done {
-		n, err := reader.Read(buffer[readToIndex:])
-		if n == 0 && errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("unexpected EOF while parsing request")
-		}
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			newBuffer := make([]byte, len(buffer)*2)
-			copy(newBuffer, buffer)
-			buffer = newBuffer
-			continue
-		}
-		readToIndex += n
-		readBytes, err := r.parse(buffer[:readToIndex])
-		if err != nil {
-			return nil, err
-		}
-		if readBytes > 0 {
-			readToIndex = copy(buffer, buffer[readBytes:readToIndex])
-		}
-	}
-
-	return r, nil
 }
 
 func parseRequestLine(requestBytes []byte) (int, *RequestLine, error) {

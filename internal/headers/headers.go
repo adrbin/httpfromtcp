@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 type Headers map[string]string
@@ -43,4 +44,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 	h[name] = value
 	return bytesRead, false, nil
+}
+
+func (h Headers) Get(key string) string {
+	keyLower := strings.ToLower(key)
+	return h[keyLower]
 }
