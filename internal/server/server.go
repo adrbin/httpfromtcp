@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"httpfromtcp/internal/response"
 	"log"
 	"net"
 )
@@ -46,9 +47,7 @@ func (s *Server) listen() {
 
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
-	conn.Write([]byte(`HTTP/1.1 200 OK
-Content-Type: text/plain
-Content-Length: 13
-
-Hello World!"))`))
+	response.WriteStatusLine(conn, response.Ok)
+	response.WriteHeaders(conn, response.GetDefaultHeaders(len("Hello World!")))
+	conn.Write([]byte("Hello World!"))
 }
