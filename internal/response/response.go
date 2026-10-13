@@ -9,8 +9,8 @@ import (
 type StatusCode int
 
 const (
-	Ok StatusCode = 200
-	BadRequest StatusCode = 400
+	Ok                  StatusCode = 200
+	BadRequest          StatusCode = 400
 	InternalServerError StatusCode = 500
 )
 
@@ -56,10 +56,11 @@ const (
 	WritingStatusLine WriterState = iota
 	WritingHeaders
 	WritingBody
+	WritingTrailers
 )
 
 type Writer struct {
-	w io.Writer
+	w     io.Writer
 	state WriterState
 }
 
@@ -89,7 +90,7 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	return err
 }
 
-func (w *Writer) WriteBody(p []byte) (error) {
+func (w *Writer) WriteBody(p []byte) error {
 	_, err := w.w.Write(p)
 	return err
 }
@@ -122,9 +123,16 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	if w.state != WritingBody {
 		return 0, fmt.Errorf("invalid state: expected WritingBody, got %v", w.state)
 	}
-	n, err := fmt.Fprint(w.w, "0\r\n\r\n")
-	if err != nil {
-		w.state = WritingHeaders
+	n, err := fmt.Fprint(w.w, "0\r\n")
+	if err == nil {
+		w.state = WritingTrailers
 	}
 	return n, err
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.state != WritingTrailers {
+		return fmt.Errorf("invalid state: expected WritingTrailers, got %v", w.state)
+	}
+	return WriteHeaders(w.w, h)
 }

@@ -1,15 +1,21 @@
 package main
 
 import (
-	"httpfromtcp/internal/request"
-	"httpfromtcp/internal/response"
-	"httpfromtcp/internal/server"
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
+
+	httpheaders "httpfromtcp/internal/headers"
+	"httpfromtcp/internal/request"
+	"httpfromtcp/internal/response"
+	"httpfromtcp/internal/server"
 )
 
 const port = 42069
@@ -56,8 +62,7 @@ func handler(w *response.Writer, req *request.Request) {
 		writeResponse(w, response.InternalServerError, message)
 		return
 	default:
-		if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
-			path := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
+		if path, ok := strings.CutPrefix(req.RequestLine.RequestTarget, "/httpbin"); ok {
 			httpbinHandler(w, path)
 			return
 		}
@@ -105,6 +110,7 @@ func httpbinHandler(w *response.Writer, path string) {
 	headers := response.GetDefaultHeaders(0)
 	headers.Set("content-type", resp.Header.Get("Content-Type"))
 	headers.Set("transfer-encoding", "chunked")
+	headers.Set("trailer", "X-Content-SHA256, X-Content-Length")
 	headers.Delete("content-length")
 	err = w.WriteHeaders(headers)
 	if err != nil {
@@ -112,25 +118,40 @@ func httpbinHandler(w *response.Writer, path string) {
 		return
 	}
 
+	hasher := sha256.New()
+	var bodyLength int64
 	buffer := make([]byte, bufferSize)
 	for {
-		n, err := resp.Body.Read(buffer)
-		if n == 0 {
-			_, err = w.WriteChunkedBodyDone()
+		n, readErr := resp.Body.Read(buffer)
+		if n > 0 {
+			chunk := buffer[:n]
+			_, _ = hasher.Write(chunk)
+			bodyLength += int64(n)
+
+			_, err = w.WriteChunkedBody(chunk)
 			if err != nil {
-				log.Printf("Error writing chunked body done: %v", err)
+				log.Printf("Error writing chunked body: %v", err)
+				return
+			}
+		}
+		if readErr != nil {
+			if readErr != io.EOF {
+				log.Printf("Error reading from httpbin response: %v", readErr)
+				return
 			}
 			break
 		}
-		if err != nil {
-			log.Printf("Error reading from httpbin response: %v", err)
-			return
-		}
+	}
 
-		_, err = w.WriteChunkedBody(buffer[:n])
-		if err != nil {
-			log.Printf("Error writing chunked body: %v", err)
-			return
-		}
+	_, err = w.WriteChunkedBodyDone()
+	if err != nil {
+		log.Printf("Error writing chunked body done: %v", err)
+		return
+	}
+	trailers := httpheaders.NewHeaders()
+	trailers.Set("X-Content-SHA256", hex.EncodeToString(hasher.Sum(nil)))
+	trailers.Set("X-Content-Length", strconv.FormatInt(bodyLength, 10))
+	if err := w.WriteTrailers(trailers); err != nil {
+		log.Printf("Error writing trailers: %v", err)
 	}
 }
