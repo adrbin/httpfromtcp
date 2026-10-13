@@ -47,7 +47,7 @@ func handler(w *response.Writer, req *request.Request) {
     <p>Your request honestly kinda sucked.</p>
   </body>
 </html>`
-		writeResponse(w, response.BadRequest, message)
+		writeResponse(w, response.BadRequest, []byte(message))
 		return
 	case "/myproblem":
 		message := `<html>
@@ -59,7 +59,10 @@ func handler(w *response.Writer, req *request.Request) {
     <p>Okay, you know what? This one is on me.</p>
   </body>
 </html>`
-		writeResponse(w, response.InternalServerError, message)
+		writeResponse(w, response.InternalServerError, []byte(message))
+		return
+	case "/video":
+		writeVideoResponse(w)
 		return
 	default:
 		if path, ok := strings.CutPrefix(req.RequestLine.RequestTarget, "/httpbin"); ok {
@@ -75,24 +78,49 @@ func handler(w *response.Writer, req *request.Request) {
     <p>Your request was an absolute banger.</p>
   </body>
 </html>`
-		writeResponse(w, response.Ok, message)
+		writeResponse(w, response.Ok, []byte(message))
 	}
 }
 
-func writeResponse(w *response.Writer, statusCode response.StatusCode, message string) {
+func writeResponse(w *response.Writer, statusCode response.StatusCode, bytes []byte) {
 	err := w.WriteStatusLine(statusCode)
 	if err != nil {
 		log.Printf("Error writing status line: %v", err)
 		return
 	}
-	headers := response.GetDefaultHeaders(len(message))
+	headers := response.GetDefaultHeaders(len(bytes))
 	headers.Set("content-type", "text/html")
 	err = w.WriteHeaders(headers)
 	if err != nil {
 		log.Printf("Error writing headers: %v", err)
 		return
 	}
-	err = w.WriteBody([]byte(message))
+	err = w.WriteBody(bytes)
+	if err != nil {
+		log.Printf("Error writing body: %v", err)
+	}
+}
+
+func writeVideoResponse(w *response.Writer) {
+	bytes, err := os.ReadFile("assets/vim.mp4")
+	if err != nil {
+		log.Printf("Error reading video file: %v", err)
+		writeResponse(w, response.InternalServerError, []byte("Internal Server Error"))
+		return
+	}
+	err = w.WriteStatusLine(response.Ok)
+	if err != nil {
+		log.Printf("Error writing status line: %v", err)
+		return
+	}
+	headers := response.GetDefaultHeaders(len(bytes))
+	headers.Set("content-type", "video/mp4")
+	err = w.WriteHeaders(headers)
+	if err != nil {
+		log.Printf("Error writing headers: %v", err)
+		return
+	}
+	err = w.WriteBody(bytes)
 	if err != nil {
 		log.Printf("Error writing body: %v", err)
 	}
