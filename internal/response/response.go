@@ -10,6 +10,7 @@ type StatusCode int
 
 const (
 	Ok                  StatusCode = 200
+	PartialContent      StatusCode = 206
 	BadRequest          StatusCode = 400
 	InternalServerError StatusCode = 500
 )
@@ -18,6 +19,9 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	switch statusCode {
 	case Ok:
 		_, err := fmt.Fprintf(w, "HTTP/1.1 %d OK\r\n", statusCode)
+		return err
+	case PartialContent:
+		_, err := fmt.Fprintf(w, "HTTP/1.1 %d Partial Content\r\n", statusCode)
 		return err
 	case BadRequest:
 		_, err := fmt.Fprintf(w, "HTTP/1.1 %d Bad Request\r\n", statusCode)
