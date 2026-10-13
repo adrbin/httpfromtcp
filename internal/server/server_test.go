@@ -3,6 +3,8 @@ package server
 import (
 	"bytes"
 	"errors"
+	"httpfromtcp/internal/request"
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -35,7 +37,9 @@ func TestListenHandlesAcceptErrors(t *testing.T) {
 
 			listener := net.Listener(&errorListener{errors: tt.errors})
 			server := &Server{conn: &listener}
-			server.listen()
+			server.listen(func(w io.Writer, req *request.Request) *HandlerError {
+				return nil
+			})
 
 			got := output.String()
 			if tt.wantLog == "" && got != "" {
