@@ -55,3 +55,8 @@ func (h Headers) Set(key, value string) {
 	keyLower := strings.ToLower(key)
 	h[keyLower] = value
 }
+
+func (h Headers) Delete(key string) {
+	keyLower := strings.ToLower(key)
+	delete(h, keyLower)
+}

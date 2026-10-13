@@ -93,3 +93,38 @@ func (w *Writer) WriteBody(p []byte) (error) {
 	_, err := w.w.Write(p)
 	return err
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.state != WritingBody {
+		return 0, fmt.Errorf("invalid state: expected WritingBody, got %v", w.state)
+	}
+	chunkSize := len(p)
+	if chunkSize == 0 {
+		n, err := fmt.Fprint(w.w, "0\r\n\r\n")
+		return n, err
+	}
+	n, err := fmt.Fprintf(w.w, "%x\r\n", chunkSize)
+	written := n
+	if err != nil {
+		return written, err
+	}
+	n, err = w.w.Write(p)
+	written += n
+	if err != nil {
+		return written, err
+	}
+	n, err = fmt.Fprint(w.w, "\r\n")
+	written += n
+	return written, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.state != WritingBody {
+		return 0, fmt.Errorf("invalid state: expected WritingBody, got %v", w.state)
+	}
+	n, err := fmt.Fprint(w.w, "0\r\n\r\n")
+	if err != nil {
+		w.state = WritingHeaders
+	}
+	return n, err
+}
