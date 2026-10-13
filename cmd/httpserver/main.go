@@ -1,11 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -28,26 +26,61 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handler(w io.Writer, req *request.Request) *server.HandlerError {
+func handler(w *response.Writer, req *request.Request) {
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
-		return &server.HandlerError{
-			StatusCode: response.BadRequest,
-			Err:        fmt.Errorf("Your problem is not my problem\n"),
-		}
+		message := `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>`
+		writeResponse(w, response.BadRequest, message)
+		return
 	case "/myproblem":
-		return &server.HandlerError{
-			StatusCode: response.InternalServerError,
-			Err:        fmt.Errorf("Woopsie, my bad\n"),
-		}
+		message := `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>`
+		writeResponse(w, response.InternalServerError, message)
+		return
 	default:
-		_, err := fmt.Fprintf(w, "All good, frfr\n")
-		if err != nil {
-			return &server.HandlerError{
-				StatusCode: response.InternalServerError,
-				Err:        fmt.Errorf("Error writing response: %v", err),
-			}
-		}
-		return nil
+		message := `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>`
+		writeResponse(w, response.Ok, message)
+	}
+}
+
+func writeResponse(w *response.Writer, statusCode response.StatusCode, message string) {
+	err := w.WriteStatusLine(statusCode)
+	if err != nil {
+		log.Printf("Error writing status line: %v", err)
+		return
+	}
+	headers := response.GetDefaultHeaders(len(message))
+	headers.Set("content-type", "text/html")
+	err = w.WriteHeaders(headers)
+	if err != nil {
+		log.Printf("Error writing headers: %v", err)
+		return
+	}
+	err = w.WriteBody([]byte(message))
+	if err != nil {
+		log.Printf("Error writing body: %v", err)
 	}
 }

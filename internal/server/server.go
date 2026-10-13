@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"httpfromtcp/internal/request"
@@ -11,7 +10,7 @@ import (
 	"net"
 )
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 type HandlerError struct {
 	StatusCode response.StatusCode
@@ -37,6 +36,10 @@ func Serve(port int, handler Handler) (*Server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
+	}
+
+	if handler == nil {
+		return nil, errors.New("handler cannot be nil")
 	}
 
 	server := &Server{conn: &listener, handler: handler}
@@ -77,18 +80,6 @@ func (s *Server) handle(conn net.Conn) {
 		handlerError.writeErrorResponse(conn)
 		return
 	}
-	buffer := bytes.Buffer{}
-	if s.handler != nil {
-		handlerError := s.handler(&buffer, req)
-		if handlerError != nil {
-			handlerError.writeErrorResponse(conn)
-			return
-		}
-	}
-	response.WriteStatusLine(conn, response.Ok)
-	response.WriteHeaders(conn, response.GetDefaultHeaders(buffer.Len()))
-	_, err = io.Copy(conn, &buffer)
-	if err != nil {
-		log.Printf("Error writing response: %v", err)
-	}
+	responseWriter := response.NewWriter(conn)
+	s.handler(responseWriter, req)
 }

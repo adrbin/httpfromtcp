@@ -49,3 +49,47 @@ func WriteHeaders(w io.Writer, headers headers.Headers) error {
 	_, err := fmt.Fprint(w, "\r\n")
 	return err
 }
+
+type WriterState int
+
+const (
+	WritingStatusLine WriterState = iota
+	WritingHeaders
+	WritingBody
+)
+
+type Writer struct {
+	w io.Writer
+	state WriterState
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{w: w, state: WritingStatusLine}
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.state != WritingStatusLine {
+		return fmt.Errorf("invalid state: expected WritingStatusLine, got %v", w.state)
+	}
+	err := WriteStatusLine(w.w, statusCode)
+	if err == nil {
+		w.state = WritingHeaders
+	}
+	return err
+}
+
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.state != WritingHeaders {
+		return fmt.Errorf("invalid state: expected WritingHeaders, got %v", w.state)
+	}
+	err := WriteHeaders(w.w, headers)
+	if err == nil {
+		w.state = WritingBody
+	}
+	return err
+}
+
+func (w *Writer) WriteBody(p []byte) (error) {
+	_, err := w.w.Write(p)
+	return err
+}
