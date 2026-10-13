@@ -23,7 +23,8 @@ func (he HandlerError) Error() string {
 }
 
 type Server struct {
-	conn *net.Listener
+	conn    *net.Listener
+	handler Handler
 }
 
 func Serve(port int, handler Handler) (*Server, error) {
@@ -32,8 +33,8 @@ func Serve(port int, handler Handler) (*Server, error) {
 		return nil, err
 	}
 
-	server := &Server{conn: &listener}
-	go server.listen(handler)
+	server := &Server{conn: &listener, handler: handler}
+	go server.listen()
 
 	return server, nil
 }
@@ -45,7 +46,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) listen(handler Handler) {
+func (s *Server) listen() {
 	for s.conn != nil {
 		conn, err := (*s.conn).Accept()
 		if err != nil {
@@ -55,11 +56,11 @@ func (s *Server) listen(handler Handler) {
 			log.Printf("Error accepting connection: %v", err)
 			continue
 		}
-		go s.handle(conn, handler)
+		go s.handle(conn)
 	}
 }
 
-func (s *Server) handle(conn net.Conn, handler Handler) {
+func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
@@ -67,10 +68,12 @@ func (s *Server) handle(conn net.Conn, handler Handler) {
 		return
 	}
 	buffer := bytes.Buffer{}
-	handlerError := handler(&buffer, req)
-	if handlerError != nil {
-		writeErrorResponse(conn, handlerError)
-		return
+	if s.handler != nil {
+		handlerError := s.handler(&buffer, req)
+		if handlerError != nil {
+			writeErrorResponse(conn, handlerError)
+			return
+		}
 	}
 	response.WriteStatusLine(conn, response.Ok)
 	response.WriteHeaders(conn, response.GetDefaultHeaders(buffer.Len()))
