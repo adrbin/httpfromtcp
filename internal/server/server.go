@@ -22,6 +22,12 @@ func (he HandlerError) Error() string {
 	return fmt.Sprintf("StatusCode: %d, Error: %v", he.StatusCode, he.Err)
 }
 
+func (he *HandlerError) writeErrorResponse(w io.Writer) {
+	response.WriteStatusLine(w, he.StatusCode)
+	response.WriteHeaders(w, response.GetDefaultHeaders(len(he.Err.Error())))
+	w.Write([]byte(he.Err.Error()))
+}
+
 type Server struct {
 	conn    *net.Listener
 	handler Handler
@@ -64,14 +70,18 @@ func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Printf("Error parsing request: %v", err)
+		handlerError := &HandlerError{
+			StatusCode: response.BadRequest,
+			Err:        fmt.Errorf("Error parsing request: %v", err),
+		}
+		handlerError.writeErrorResponse(conn)
 		return
 	}
 	buffer := bytes.Buffer{}
 	if s.handler != nil {
 		handlerError := s.handler(&buffer, req)
 		if handlerError != nil {
-			writeErrorResponse(conn, handlerError)
+			handlerError.writeErrorResponse(conn)
 			return
 		}
 	}
@@ -81,10 +91,4 @@ func (s *Server) handle(conn net.Conn) {
 	if err != nil {
 		log.Printf("Error writing response: %v", err)
 	}
-}
-
-func writeErrorResponse(w io.Writer, handlerError *HandlerError) {
-	response.WriteStatusLine(w, handlerError.StatusCode)
-	response.WriteHeaders(w, response.GetDefaultHeaders(len(handlerError.Err.Error())))
-	w.Write([]byte(handlerError.Err.Error()))
 }
